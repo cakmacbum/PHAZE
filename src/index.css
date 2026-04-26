@@ -21,19 +21,33 @@
   animation: scanline 4s linear infinite;
 }
 
-body {
+body, html, #root {
   background-color: var(--c-bg);
   color: var(--c-text);
   font-family: var(--font-mono);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: manipulation;
+  touch-action: none;
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100dvh;
 }
 
 .glitch-text {
   text-shadow: 2px 2px 0px var(--c-layer-a), -2px -2px 0px var(--c-layer-b);
   animation: glitch 3s infinite;
+}
+
+.portrait-warning {
+  display: none;
+}
+
+@media (orientation: portrait) {
+  .portrait-warning {
+    display: flex !important;
+  }
 }
 
 @keyframes glitch {

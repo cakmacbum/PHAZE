@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameEngine, GAME_WIDTH, GAME_HEIGHT, PLAYER_X, PLAYER_SIZE, PLAYER_Y, GhostAction, THEME } from '../game/engine';
-import { useAdminMode } from '../hooks/useAdminMode';
-import { AdminPanel } from './AdminPanel';
 
 const engine = new GameEngine();
 
@@ -81,10 +79,6 @@ export default function PhaseShiftGame() {
   const [reviveCountdown, setReviveCountdown] = useState(0);
   const [isAdPlaying, setIsAdPlaying] = useState(false);
 
-  const { debugState, updateDebugState } = useAdminMode();
-  const debugStateRef = useRef(debugState);
-  useEffect(() => { debugStateRef.current = debugState; }, [debugState]);
-
   const requestRef = useRef<number>(0);
   
   // Local storage keys
@@ -106,21 +100,18 @@ export default function PhaseShiftGame() {
       setGameState(prev => ({ ...prev, gameOver: true }));
       setReviveCountdown(5);
       
-      const ds = debugStateRef.current;
-      if (!ds.isAdminRun) {
-          const bestScore = parseInt(localStorage.getItem(BEST_SCORE_KEY) || '0', 10);
-          if (score > bestScore) {
-              localStorage.setItem(BEST_SCORE_KEY, score.toString());
-              localStorage.setItem(BEST_GHOST_KEY, JSON.stringify(ghostActions));
-          }
-          
-          setTotalXp(prev => {
-              const newXp = prev + score;
-              localStorage.setItem(TOTAL_XP_KEY, newXp.toString());
-              setPlayerLevel(getPlayerLevel(newXp));
-              return newXp;
-          });
+      const bestScore = parseInt(localStorage.getItem(BEST_SCORE_KEY) || '0', 10);
+      if (score > bestScore) {
+          localStorage.setItem(BEST_SCORE_KEY, score.toString());
+          localStorage.setItem(BEST_GHOST_KEY, JSON.stringify(ghostActions));
       }
+      
+      setTotalXp(prev => {
+          const newXp = prev + score;
+          localStorage.setItem(TOTAL_XP_KEY, newXp.toString());
+          setPlayerLevel(getPlayerLevel(newXp));
+          return newXp;
+      });
     };
     engine.onScoreUpdate = (score, combo) => {
       setGameState(prev => ({ ...prev, score, combo }));
@@ -132,11 +123,6 @@ export default function PhaseShiftGame() {
     if (!ctx) return;
 
     const render = (time: number) => {
-      const ds = debugStateRef.current;
-      engine.debugConfig.speedMultiplier = ds.speedMultiplier;
-      engine.debugConfig.invincible = ds.invincible;
-      engine.debugConfig.forcedPattern = ds.forcedPattern;
-      
       engine.update(time);
       
       // Apply screen shake to canvas, NOT container (so UI remains perfectly stable)
@@ -152,11 +138,7 @@ export default function PhaseShiftGame() {
 
       // Level theme lerping
       if (!engine.state.gameOver) {
-          const ds = debugStateRef.current;
-          let effectiveLevel = ds.auraLevel !== null ? ds.auraLevel : playerLevel;
-          if (ds.selectedTheme) {
-             effectiveLevel = THEME_NAME_TO_LEVEL[ds.selectedTheme] || effectiveLevel;
-          }
+          const effectiveLevel = playerLevel;
           const targetTheme = getTargetTheme(effectiveLevel);
           const lerpSpeed = 0.05; // Quick enough to reach target, slow enough to be smooth
           activeTheme.colorA = activeTheme.colorA.map((c, i) => c + (targetTheme.colorA[i] - c) * lerpSpeed) as [number, number, number];
@@ -296,33 +278,6 @@ export default function PhaseShiftGame() {
       ctx.restore();
     });
 
-    // Debug rendering
-    const ds = debugStateRef.current;
-    if (ds.showHitboxes || ds.showPatternName) {
-      ctx.save();
-      
-      if (ds.showHitboxes && engine.state.isStarted) {
-         ctx.strokeStyle = 'red';
-         ctx.lineWidth = 1;
-         ctx.strokeRect(PLAYER_X, PLAYER_Y, PLAYER_SIZE, PLAYER_SIZE);
-      }
-
-      engine.obstacles.forEach(obs => {
-         if (ds.showHitboxes && obs.type !== 'SPARK') {
-             ctx.strokeStyle = obs.type === 'WALL' ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
-             ctx.lineWidth = 1;
-             ctx.strokeRect(obs.x, 0, obs.width, GAME_HEIGHT);
-         }
-         if (ds.showPatternName && obs.patternName) {
-             ctx.fillStyle = 'white';
-             ctx.font = '12px Courier New';
-             ctx.fillText(obs.patternName, obs.x, 30);
-         }
-      });
-      
-      ctx.restore();
-    }
-
     // Draw ghost
     if (engine.ghostLayer && !engine.state.gameOver) {
         ctx.save();
@@ -459,11 +414,21 @@ export default function PhaseShiftGame() {
 
   return (
     <div 
-      ref={containerRef}
-      className="relative w-full max-w-5xl mx-auto aspect-video bg-[#050505] shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden border-8 border-[#1a1a1a]"
+      className="w-full h-full flex items-center justify-center p-[env(safe-area-inset-top)_env(safe-area-inset-right)_env(safe-area-inset-bottom)_env(safe-area-inset-left)] touch-none select-none"
+      onContextMenu={(e) => e.preventDefault()}
       onPointerDown={handlePointerDown}
     >
-      <AdminPanel debugState={debugState} onUpdate={updateDebugState} />
+      <div 
+        ref={containerRef}
+        className="relative bg-[#050505] shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden lg:border-8 border-[#1a1a1a] flex-shrink-0"
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          maxHeight: '100dvh', 
+          maxWidth: 'min(100%, calc(100dvh * 2))', 
+          aspectRatio: '2 / 1' 
+        }}
+      >
       
       {/* Grid Background Overlay */}
       <div 
@@ -485,7 +450,7 @@ export default function PhaseShiftGame() {
       {/* Event Overlay */}
       {gameState.eventText && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-              <div className="text-4xl font-black text-white italic tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] animate-[ping_0.5s_cubic-bezier(0,0,0.2,1)_reverse]">
+              <div className="text-[clamp(1.5rem,5vw,2.25rem)] font-black text-white italic tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] animate-[ping_0.5s_cubic-bezier(0,0,0.2,1)_reverse]">
                   {gameState.eventText}
               </div>
           </div>
@@ -495,26 +460,26 @@ export default function PhaseShiftGame() {
       {gameState.isStarted && (
           <div className="absolute top-0 w-full p-8 flex justify-between items-start pointer-events-none z-20 font-mono">
               <div className="space-y-1">
-                  <div className="text-[10px] text-[var(--colorA)] tracking-[0.2em] uppercase font-bold" style={{color: THEME.colorA}}>Current Distance</div>
-                  <div className="text-4xl font-black text-white tabular-nums">{gameState.score}<span className="text-xl opacity-40 uppercase ml-2">m</span></div>
+                  <div className="text-[clamp(10px,1.5vw,14px)] text-[var(--colorA)] tracking-[0.2em] uppercase font-bold" style={{color: THEME.colorA}}>Current Distance</div>
+                  <div className="text-[clamp(1.5rem,5vw,2.25rem)] font-black text-white tabular-nums leading-none">{gameState.score}<span className="text-[clamp(1rem,2.5vw,1.25rem)] opacity-40 uppercase ml-2">m</span></div>
               </div>
               
               <div className="flex flex-col items-center">
-                  <div className="text-[10px] tracking-[0.3em] font-bold text-white/50 uppercase">Aura Lvl</div>
-                  <div className="text-2xl font-black text-white tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+                  <div className="text-[clamp(10px,1.5vw,14px)] tracking-[0.3em] font-bold text-white/50 uppercase">Aura Lvl</div>
+                  <div className="text-[clamp(1.2rem,4vw,1.5rem)] font-black text-white tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
                       {playerLevel}
                   </div>
                   {gameState.combo > 1 && (
                       <div className="mt-2 bg-[#00d4ff]/10 border border-[#00d4ff] px-4 py-1 rounded-full">
-                          <div className="text-xl font-black text-[#00d4ff] animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] italic uppercase tracking-tighter">Combo x{gameState.combo}</div>
+                          <div className="text-[clamp(1rem,2.5vw,1.25rem)] font-black text-[#00d4ff] animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] italic uppercase tracking-tighter">Combo x{gameState.combo}</div>
                       </div>
                   )}
               </div>
               
               <div className="text-right space-y-1">
-                  <div className="text-[10px] text-[var(--colorB)] tracking-[0.2em] uppercase font-bold" style={{color: THEME.colorB}}>Sparks Collected</div>
+                  <div className="text-[clamp(10px,1.5vw,14px)] text-[var(--colorB)] tracking-[0.2em] uppercase font-bold" style={{color: THEME.colorB}}>Sparks Collected</div>
                   <div className="flex items-center justify-end gap-2">
-                      <div className="text-4xl font-black text-white tabular-nums">{gameState.sparks}</div>
+                      <div className="text-[clamp(1.5rem,5vw,2.25rem)] font-black text-white tabular-nums leading-none">{gameState.sparks}</div>
                       <div className="w-4 h-4 rotate-45 border border-white" style={{backgroundColor: THEME.colorB}}></div>
                   </div>
               </div>
@@ -524,24 +489,31 @@ export default function PhaseShiftGame() {
       {/* Start Overlay */}
       {(!gameState.isStarted) && (
         <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center pointer-events-auto z-30 backdrop-blur-sm p-8">
-            <h1 className="text-6xl font-black mb-2 uppercase tracking-widest text-white">
-                Phase Shift
-            </h1>
-            
-            <div className="mb-6 flex flex-col items-center">
-                <div className="text-[10px] tracking-[0.3em] font-bold text-white/50 uppercase mb-1">Aura Level</div>
-                <div className="text-4xl font-black text-white tabular-nums">
-                    {playerLevel}
-                </div>
-                <div className="text-[10px] text-white/40 uppercase mt-1">XP: {totalXp}</div>
+            {/* Logo Component Area */}
+            <div className="flex flex-col items-center mb-6">
+                <h1 className="text-[clamp(2.5rem,8vw,3.75rem)] font-black uppercase tracking-[0.3em] pl-[0.3em] flex items-center justify-center gap-1 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                    <span style={{ color: THEME.colorA }}>P</span>
+                    <span className="text-white">H</span>
+                    <span className="text-[1.1em] text-white">Λ</span>
+                    <span className="text-white">Z</span>
+                    <span style={{ color: THEME.colorB }}>E</span>
+                </h1>
             </div>
             
-            <div className="text-white/60 mb-8 max-w-md text-center text-sm leading-relaxed tracking-wider">
+            <div className="mb-6 flex flex-col items-center">
+                <div className="text-[clamp(10px,1.5vw,14px)] tracking-[0.3em] font-bold text-white/50 uppercase mb-1">Aura Level</div>
+                <div className="text-[clamp(1.5rem,5vw,2.25rem)] font-black text-white tabular-nums">
+                    {playerLevel}
+                </div>
+                <div className="text-[clamp(10px,1.5vw,14px)] text-white/40 uppercase mt-1">XP: {totalXp}</div>
+            </div>
+            
+            <div className="text-white/60 mb-8 max-w-md text-center text-[clamp(0.75rem,2vw,0.875rem)] leading-relaxed tracking-wider">
                  Navigate parallel realities. <br/>
                  <span style={{color: THEME.colorA}} className="font-bold">Color A</span> destroys <span style={{color: THEME.colorA}} className="font-bold">Color A</span>. <br/>
                  <span style={{color: THEME.colorB}} className="font-bold">Color B</span> destroys <span style={{color: THEME.colorB}} className="font-bold">Color B</span>.<br/>
                  <br/>
-                 <span className="text-[10px] tracking-[0.3em] opacity-80 uppercase">Tap or Space to Shift</span>
+                 <span className="text-[clamp(10px,1.5vw,14px)] tracking-[0.3em] opacity-80 uppercase">Tap or Space to Shift</span>
              </div>
 
             <div className="text-center flex flex-col items-center group mt-4">
@@ -557,25 +529,25 @@ export default function PhaseShiftGame() {
       {/* Game Over Overlay */}
       {gameState.isStarted && gameState.gameOver && !isAdPlaying && (
         <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center pointer-events-auto z-30 backdrop-blur-sm p-8">
-            <h1 className="text-6xl font-black mb-2 uppercase tracking-widest text-red-500">
+            <h1 className="text-[clamp(2.5rem,8vw,3.75rem)] font-black mb-2 uppercase tracking-widest text-red-500">
                 You Crashed
             </h1>
-            <div className="text-white/60 mb-8 max-w-md text-center text-xl italic tracking-wider">
+            <div className="text-white/60 mb-8 max-w-md text-center text-[clamp(1rem,2.5vw,1.25rem)] italic tracking-wider">
                {gameState.score > 2000 ? "Almost there!" : "One more try?"}
             </div>
             
             <div className="text-center mb-10 flex gap-12">
                 <div>
-                    <div className="text-[10px] tracking-[0.2em] text-[#00d4ff] uppercase">Final Distance</div>
-                    <div className="text-4xl font-black text-white tabular-nums">{gameState.score}<span className="text-xl opacity-40 uppercase ml-1">m</span></div>
+                    <div className="text-[clamp(10px,1.5vw,14px)] tracking-[0.2em] text-[#00d4ff] uppercase">Final Distance</div>
+                    <div className="text-[clamp(1.5rem,5vw,2.25rem)] font-black text-white tabular-nums">{gameState.score}<span className="text-[clamp(1rem,2.5vw,1.25rem)] opacity-40 uppercase ml-1">m</span></div>
                 </div>
                 <div>
-                    <div className="text-[10px] tracking-[0.2em] text-[#9d00ff] uppercase">Sparks</div>
-                    <div className="text-4xl font-black text-white tabular-nums">{gameState.sparks}</div>
+                    <div className="text-[clamp(10px,1.5vw,14px)] tracking-[0.2em] text-[#9d00ff] uppercase">Sparks</div>
+                    <div className="text-[clamp(1.5rem,5vw,2.25rem)] font-black text-white tabular-nums">{gameState.sparks}</div>
                 </div>
             </div>
 
-            <div className="flex gap-6 w-full max-w-lg justify-center items-stretch h-[100px]">
+            <div className="flex gap-6 w-full max-w-lg justify-center items-stretch h-[clamp(60px,15vh,100px)]">
                 <button 
                   onPointerDown={(e) => { e.stopPropagation(); startGame(); }}
                   className="flex-1 border-2 border-white/20 bg-black/50 hover:bg-white/10 active:bg-white/20 flex items-center justify-center text-white uppercase tracking-widest font-bold transition-colors cursor-pointer"
@@ -588,10 +560,10 @@ export default function PhaseShiftGame() {
                     onPointerDown={(e) => { e.stopPropagation(); playAdAndRevive(); }}
                     className="flex-1 bg-white text-black hover:bg-gray-200 active:bg-gray-300 flex flex-col items-center justify-center uppercase tracking-widest transition-transform transform hover:scale-[1.02] shadow-[0_0_30px_rgba(255,255,255,0.4)] relative cursor-pointer overflow-hidden"
                   >
-                      <div className="font-black text-xl mb-1 flex items-center gap-2">
-                        Continue <span className="text-sm">▶</span>
+                      <div className="font-black text-[clamp(1rem,2.5vw,1.25rem)] mb-1 flex items-center gap-2">
+                        Continue <span className="text-[clamp(0.75rem,2vw,0.875rem)]">▶</span>
                       </div>
-                      <div className="text-[10px] font-bold opacity-60">Watch Ad</div>
+                      <div className="text-[clamp(10px,1.5vw,14px)] font-bold opacity-60">Watch Ad</div>
                       
                       {/* Timer progress bar at bottom */}
                       <div className="absolute bottom-0 left-0 h-[6px] bg-black/20 w-full">
@@ -606,15 +578,16 @@ export default function PhaseShiftGame() {
       {/* Simulated Ad Overlay */}
       {isAdPlaying && (
          <div className="absolute inset-0 bg-[#050505] z-50 flex flex-col items-center justify-center text-white font-mono pointer-events-auto">
-            <div className="animate-pulse mb-8 text-[#00d4ff] border border-[#00d4ff] px-6 py-2 uppercase tracking-widest text-[10px] font-bold shadow-[0_0_15px_#00d4ff]">External Sponsor</div>
-            <div className="text-2xl font-black mb-2 opacity-50 italic">Playing Rewarded Ad...</div>
-            <div className="mt-8 text-[10px] tracking-widest uppercase opacity-40">Please wait 3 seconds</div>
+            <div className="animate-pulse mb-8 text-[#00d4ff] border border-[#00d4ff] px-6 py-2 uppercase tracking-widest text-[clamp(10px,1.5vw,14px)] font-bold shadow-[0_0_15px_#00d4ff]">External Sponsor</div>
+            <div className="text-[clamp(1.2rem,4vw,1.5rem)] font-black mb-2 opacity-50 italic">Playing Rewarded Ad...</div>
+            <div className="mt-8 text-[clamp(10px,1.5vw,14px)] tracking-widest uppercase opacity-40">Please wait 3 seconds</div>
          </div>
       )}
 
       {/* Visual Effects Layers */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.6)_100%)] z-40"></div>
       <div className="absolute top-0 left-0 w-full h-[2px] bg-white opacity-10 animate-scanline z-50 pointer-events-none"></div>
+    </div>
     </div>
   );
 }

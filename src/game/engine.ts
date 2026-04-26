@@ -67,12 +67,6 @@ export const THEME = {
   trailAlpha: 0.3
 };
 
-export interface DebugConfig {
-  speedMultiplier: number;
-  invincible: boolean;
-  forcedPattern: any | null; // Typed loosely to avoid circular dependency initially, but 'string' is fine.
-}
-
 export class GameEngine {
   public state: GameState;
   public obstacles: Obstacle[] = [];
@@ -83,12 +77,7 @@ export class GameEngine {
   private patternSystem: PatternSystem = new PatternSystem();
   private nextEventTime = 20 + Math.random() * 20;
   
-  public debugConfig: DebugConfig = {
-      speedMultiplier: 1,
-      invincible: false,
-      forcedPattern: null
-  };
-  
+
   public currentGhost: GhostAction[] = [];
   public recordedGhost: GhostAction[] = [];
   public ghostLayer: Layer | null = null;
@@ -224,7 +213,7 @@ export class GameEngine {
     
     // Lerp timescale
     this.state.timeScale += (this.state.targetTimeScale - this.state.timeScale) * unscaledDt * 2;
-    const dt = unscaledDt * this.state.timeScale * this.debugConfig.speedMultiplier * GLOBAL_SPEED_MULTIPLIER;
+    const dt = unscaledDt * this.state.timeScale * GLOBAL_SPEED_MULTIPLIER;
 
     this.state.distance += this.state.speed * dt;
     this.state.runTimeSec += dt;
@@ -356,7 +345,6 @@ export class GameEngine {
   }
 
   private handleCollision() {
-    if (this.debugConfig.invincible) return;
     this.state.gameOver = true;
     this.state.combo = 0;
     this.state.screenShake = 30; // Huge shake on death
@@ -368,7 +356,7 @@ export class GameEngine {
   }
 
   private spawnPattern() {
-    const pattern = this.patternSystem.getNextPattern(this.state.runTimeSec, this.state.speed, this.debugConfig.forcedPattern);
+    const pattern = this.patternSystem.getNextPattern(this.state.runTimeSec, this.state.speed);
     
     for (let i = 0; i < pattern.spawns.length; i++) {
       const spawn = pattern.spawns[i];

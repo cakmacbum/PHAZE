@@ -18,7 +18,7 @@ export interface PatternResult {
 export class PatternSystem {
   private lastPatternCategory: PatternCategory | null = null;
   
-  public getNextPattern(runDurationSec: number, speed: number, forcedCategory?: PatternCategory | null): PatternResult {
+  public getNextPattern(runDurationSec: number, speed: number): PatternResult {
     let allowedCategories: PatternCategory[] = ['BASIC'];
     
     // Core Rules: Learning Phase (0-15s), Adaptation Phase (15-30s), Skill Build Phase (30-60s), Mastery Phase (60s+)
@@ -33,7 +33,7 @@ export class PatternSystem {
       if (allowedCategories.length === 0) allowedCategories = ['BASIC'];
     }
     
-    const category = forcedCategory || this.pickRandom(allowedCategories);
+    const category = this.pickRandom(allowedCategories);
     this.lastPatternCategory = category;
     
     const difficultyMultiplier = Math.min(1 + (runDurationSec / 60), 3); // Scales 1 to 3
