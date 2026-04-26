@@ -81,18 +81,51 @@ export default function PhaseShiftGame() {
 
   const requestRef = useRef<number>(0);
   
-  // Local storage keys
-  const BEST_SCORE_KEY = 'phaseShiftBestScore';
-  const BEST_GHOST_KEY = 'phaseShiftBestGhost';
-  const TOTAL_XP_KEY = 'phaseShiftTotalXp';
+  // Player Data System
+  const PLAYER_DATA_KEY = 'phazePlayerData';
   
-  const [totalXp, setTotalXp] = useState(0);
-  const [playerLevel, setPlayerLevel] = useState(1);
+  const DEFAULT_PLAYER_DATA = {
+    auraLevel: 1,
+    xp: 0,
+    sparks: 0,
+    bestDistance: 0,
+    combo: 0,
+    unlockedThemes: ['Dark Phase']
+  };
+
+  const BEST_GHOST_KEY = 'phaseShiftBestGhost';
+  
+  const [totalXp, setTotalXp] = useState(DEFAULT_PLAYER_DATA.xp);
+  const [playerLevel, setPlayerLevel] = useState(DEFAULT_PLAYER_DATA.auraLevel);
+  const [totalSparks, setTotalSparks] = useState(DEFAULT_PLAYER_DATA.sparks);
+  const [bestDistance, setBestDistance] = useState(DEFAULT_PLAYER_DATA.bestDistance);
 
   useEffect(() => {
-     const loadedXp = parseInt(localStorage.getItem(TOTAL_XP_KEY) || '0', 10);
-     setTotalXp(loadedXp);
-     setPlayerLevel(getPlayerLevel(loadedXp));
+     let data = { ...DEFAULT_PLAYER_DATA };
+     try {
+         const stored = localStorage.getItem(PLAYER_DATA_KEY);
+         if (stored) {
+             data = { ...DEFAULT_PLAYER_DATA, ...JSON.parse(stored) };
+         } else {
+             // Handle migration from old keys if any exist, then clear them
+             const oldXp = localStorage.getItem('phaseShiftTotalXp');
+             const oldBest = localStorage.getItem('phaseShiftBestScore');
+             if (oldXp || oldBest) {
+                 data.xp = parseInt(oldXp || '0', 10);
+                 data.bestDistance = parseInt(oldBest || '0', 10);
+                 localStorage.removeItem('phaseShiftTotalXp');
+                 localStorage.removeItem('phaseShiftBestScore');
+             }
+             localStorage.setItem(PLAYER_DATA_KEY, JSON.stringify(data));
+         }
+     } catch(e) {
+         console.error('Failed to load player data', e);
+     }
+     
+     setTotalXp(data.xp);
+     setPlayerLevel(getPlayerLevel(data.xp));
+     setTotalSparks(data.sparks || 0);
+     setBestDistance(data.bestDistance || 0);
   }, []);
 
   useEffect(() => {
@@ -100,18 +133,35 @@ export default function PhaseShiftGame() {
       setGameState(prev => ({ ...prev, gameOver: true }));
       setReviveCountdown(5);
       
-      const bestScore = parseInt(localStorage.getItem(BEST_SCORE_KEY) || '0', 10);
-      if (score > bestScore) {
-          localStorage.setItem(BEST_SCORE_KEY, score.toString());
-          localStorage.setItem(BEST_GHOST_KEY, JSON.stringify(ghostActions));
+      let data = { ...DEFAULT_PLAYER_DATA };
+      try {
+          const stored = localStorage.getItem(PLAYER_DATA_KEY);
+          if (stored) {
+              data = { ...DEFAULT_PLAYER_DATA, ...JSON.parse(stored) };
+          }
+      } catch(e) {}
+
+      let isNewBest = false;
+      if (score > data.bestDistance) {
+          data.bestDistance = score;
+          isNewBest = true;
+          try {
+             localStorage.setItem(BEST_GHOST_KEY, JSON.stringify(ghostActions));
+          } catch(e) {}
       }
       
-      setTotalXp(prev => {
-          const newXp = prev + score;
-          localStorage.setItem(TOTAL_XP_KEY, newXp.toString());
-          setPlayerLevel(getPlayerLevel(newXp));
-          return newXp;
-      });
+      data.sparks = (data.sparks || 0) + sparks;
+      data.xp += score;
+      data.auraLevel = getPlayerLevel(data.xp);
+      
+      try {
+          localStorage.setItem(PLAYER_DATA_KEY, JSON.stringify(data));
+      } catch(e) {}
+      
+      setTotalXp(data.xp);
+      setPlayerLevel(data.auraLevel);
+      setTotalSparks(data.sparks);
+      setBestDistance(data.bestDistance);
     };
     engine.onScoreUpdate = (score, combo) => {
       setGameState(prev => ({ ...prev, score, combo }));
